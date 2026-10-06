@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MinControl</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="stylesheet" href="vendor/bootstrap-icons/bootstrap-icons.css">
+<link rel="stylesheet" href="vendor/inter/inter.css">
+<style>
+  [x-cloak] { display: none !important; }
+  body { font-family: 'Inter', system-ui, sans-serif; }
+  .nav-item { display: flex; align-items: center; gap: .75rem; padding: .55rem .9rem; border-radius: .4rem; color: #4b5563; font-size: .875rem; font-weight: 500; }
+  .nav-item i { font-size: 1.05rem; width: 1.25rem; text-align: center; }
+  .nav-item.active { background: #eaf2fe; color: #1a73c7; }
+  .nav-item:not(.active):hover { background: #eef0f3; }
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: .5rem; }
+  .btn-primary { background: #2490EF; color: #fff; }
+  .btn-primary:hover { background: #1a73c7; }
+  .btn-pdf { background: #dc2626; color: #fff; }
+  .btn-pdf:hover { background: #b91c1c; }
+  .btn-excel { background: #16a34a; color: #fff; }
+  .btn-excel:hover { background: #15803d; }
+  ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+</style>
+<!-- tailwind.css va DESPUÉS: así sus utilidades (bg-gray-800, text-white, etc.) siempre ganan sobre .card -->
+<link rel="stylesheet" href="vendor/tailwind/tailwind.css">
+<script src="vendor/dexie/dexie.js"></script>
+<script src="vendor/jspdf/jspdf.umd.min.js"></script>
+<script src="vendor/xlsx/xlsx.full.min.js"></script>
+<script src="vendor/jszip/jszip.min.js"></script>
+<script defer src="vendor/alpinejs/cdn.min.js"></script>
+<script src="js/db.js"></script>
+<script src="js/export.js"></script>
+<script src="js/license.js"></script>
+<script src="js/app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+</script>
+</head>
+<body class="bg-gray-50 min-h-screen text-gray-900" x-data="minControlApp()" x-init="init()">
+
+<div x-show="cargando" class="flex items-center justify-center h-screen text-gray-500">
+  <i class="bi bi-hourglass-split animate-spin mr-2"></i> Cargando...
+</div>
+
+<div x-show="!cargando && errorInicio" x-cloak class="flex items-center justify-center h-screen p-6">
+  <div class="max-w-md text-center space-y-3">
+    <i class="bi bi-exclamation-triangle text-4xl text-red-500"></i>
+    <h1 class="text-lg font-semibold">No se pudo cargar MinControl</h1>
+    <p class="text-sm text-gray-600" x-text="errorInicio"></p>
+    <p class="text-xs text-gray-400">Intente abrir la aplicación mediante el servidor local incluido (iniciar-servidor) en vez de abrir index.html directamente, y recargue la página.</p>
+  </div>
+</div>
+
+<div x-show="!cargando && !errorInicio" x-cloak class="flex h-screen overflow-hidden">
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside :class="sidebarAbierto ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
+    class="fixed lg:static z-30 inset-y-0 left-0 w-64 bg-sidebar border-r border-gray-200 transition-transform duration-200 flex flex-col">
+    <div class="px-4 py-4 border-b border-gray-200 flex items-center gap-2">
+      <img src="img/logo.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'" class="w-8 h-8 rounded object-cover">
+      <div class="w-8 h-8 rounded bg-primary text-white items-center justify-center font-bold text-sm" style="display:none">MC</div>
+      <span class="font-semibold text-gray-800">MinControl</span>
+    </div>
+
+    <nav class="flex-1 overflow-y-auto px-2 py-3 space-y-1">
+      <a href="#" @click.prevent="ir('dashboard')" class="nav-item" :class="pantalla === 'dashboard' && 'active'"><i class="bi bi-speedometer2"></i> Inicio</a>
+      <a href="#" @click.prevent="ir('produccion')" class="nav-item" :class="pantalla === 'produccion' && 'active'"><i class="bi bi-boxes"></i> Producción</a>
+      <a href="#" @click.prevent="ir('ingresos')" class="nav-item" :class="pantalla === 'ingresos' && 'active'"><i class="bi bi-graph-up-arrow"></i> Ingresos</a>
+      <a href="#" @click.prevent="ir('gastos')" class="nav-item" :class="pantalla === 'gastos' && 'active'"><i class="bi bi-cash-coin"></i> Gastos</a>
+      <a href="#" @click.prevent="ir('trabajadores'); trabajadorSeleccionado = null" class="nav-item" :class="pantalla === 'trabajadores' && 'active'"><i class="bi bi-people"></i> Trabajadores</a>
+      <a href="#" @click.prevent="ir('caja'); cajaSeleccionada = null" class="nav-item" :class="pantalla === 'caja' && 'active'"><i class="bi bi-suitcase2"></i> Caja chica</a>
+      <div class="pt-3 mt-3 border-t border-gray-200"></div>
+      <a href="#" @click.prevent="ir('config')" class="nav-item" :class="pantalla === 'config' && 'active'"><i class="bi bi-gear"></i> Configuración</a>
+    </nav>
+  </aside>
+
+  <div x-show="sidebarAbierto" x-cloak @click="sidebarAbierto = false" class="fixed inset-0 bg-black/30 z-20 lg:hidden"></div>
+
+  <div class="flex-1 flex flex-col overflow-hidden">
+    <header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3 lg:hidden">
+      <button @click="sidebarAbierto = true" class="text-gray-500 text-xl"><i class="bi bi-list"></i></button>
+      <span class="font-semibold" x-text="proyectoActivo ? proyectoActivo.nombre : 'MinControl'"></span>
+    </header>
+
+    <main class="flex-1 overflow-y-auto p-4 lg:p-6">
+      <div class="max-w-4xl mx-auto space-y-4">
+
+        <!-- ============ DASHBOARD ============ -->
+        <section x-show="pantalla === 'dashboard' && totales" class="space-y-4">
+          <h1 class="text-xl font-semibold text-gray-800" x-text="proyectoActivo ? proyectoActivo.nombre : 'Inicio'"></h1>
+
+          <div class="card p-4 flex gap-3 items-end flex-wrap">
+            <div><label class="text-xs text-gray-500">Desde</label><input type="date" x-model="periodoInicio" @change="cargarDashboard()" class="block border rounded px-2 py-1.5 text-sm"></div>
+            <div><label class="text-xs text-gray-500">Hasta</label><input type="date" x-model="periodoFin" @change="cargarDashboard()" class="block border rounded px-2 py-1.5 text-sm"></div>
+          </div>
+
+          <template x-if="totales">
+            <div class="space-y-4">
+              <div class="card p-4">
+                <div class="text-xs text-gray-500 mb-2 flex items-center gap-1"><i class="bi bi-boxes"></i> Producción — <span x-text="totales.cantidadTotal.toFixed(2) + ' ' + (proyectoActivo.unidadesDeValor === 'M3' ? 'm³' : 't')"></span></div>
+                <div class="divide-y divide-gray-100">
+                  <template x-for="(pm, mid) in totales.porMetal" :key="mid">
+                    <div class="py-2 flex justify-between text-sm">
+                      <span x-text="nombreMetal(pm.metal)"></span>
+                      <span class="text-gray-600" x-text="fmt(pm.contenido) + ' ' + unidadMetal(pm.metal) + ' · ' + config.monedaPrincipal + ' ' + fmt(pm.valor)"></span>
+                    </div>
+                  </template>
+                </div>
+                <div class="text-xs text-gray-400 mt-1">Valor potencial estimado (no es venta real)</div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div class="card p-4">
+                  <div class="text-xs text-gray-500 flex items-center gap-1"><i class="bi bi-arrow-down-circle"></i> Ingresos</div>
+                  <div class="text-xl font-bold mt-1 text-green-600" x-text="config.monedaPrincipal + ' ' + fmt(totales.ingresosNegocio)"></div>
+                </div>
+                <div class="card p-4">
+                  <div class="text-xs text-gray-500 flex items-center gap-1"><i class="bi bi-arrow-up-circle"></i> Gastos</div>
+                  <div class="text-xl font-bold mt-1 text-red-600" x-text="config.monedaPrincipal + ' ' + fmt(totales.costosTotal)"></div>
+                </div>
+              </div>
+              <div class="card p-4 border-2 border-gray-800">
+                <div class="text-xs text-gray-500 flex items-center gap-1"><i class="bi bi-piggy-bank"></i> Margen</div>
+                <div class="text-2xl font-bold mt-1 text-gray-900" x-text="config.monedaPrincipal + ' ' + fmt(totales.margen)"></div>
+              </div>
+
+              <div class="card p-4" x-show="totales.personal.ingresos > 0 || totales.personal.gastos > 0">
+                <div class="text-xs text-gray-500 mb-2">Personal (aparte del proyecto)</div>
+                <div class="flex gap-6 text-sm">
+                  <div>Ingresos: <span class="font-medium text-green-600" x-text="config.monedaPrincipal + ' ' + fmt(totales.personal.ingresos)"></span></div>
+                  <div>Gastos: <span class="font-medium text-red-600" x-text="config.monedaPrincipal + ' ' + fmt(totales.personal.gastos)"></span></div>
+                  <div>Saldo: <span class="font-medium" x-text="config.monedaPrincipal + ' ' + fmt(totales.personal.saldo)"></span></div>
+                </div>
+              </div>
+            </div>
+          </template>
+        </section>
+
+        <!-- ============ PRODUCCIÓN ============ -->
+        <section x-show="pantalla === 'produccion'" class="space-y-4">
+          <div class="flex justify-between items-center">
+            <h1 class="text-xl font-semibold text-gray-800">Producción</h1>
+            <div class="flex gap-2">
+              <button @click="exportarProduccionPDFClick()" class="btn-pdf rounded px-3 py-1.5 text-xs font-medium flex items-center gap-1"><i class="bi bi-file-earmark-pdf"></i> PDF</button>
+              <button @click="exportarProduccionExcelClick()" class="btn-excel rounded px-3 py-1.5 text-xs font-medium flex items-center gap-1"><i class="bi bi-file-earmark-excel"></i> Excel</button>
+            </div>
+          </div>
+
+          <div class="card p-4 space-y-2">
+            <h2 class="font-medium text-sm text-gray-600" x-text="editandoProduccionId ? 'Editar registro' : 'Nuevo registro'"></h2>
+            <div><label class="text-xs text-gray-500">Comentario</label><input type="text" x-model="formProduccion.comentario" class="w-full border rounded px-2 py-1.5 text-sm"></div>
+            <div><label class="text-xs text-gray-500" x-text="'Cantidad (' + (proyectoActivo && proyectoActivo.unidadesDeValor === 'M3' ? 'm³' : 't') + ')'"></label><input type="number" step="0.01" x-model="formProduccion.cantidad" class="w-full border rounded px-2 py-1.5 text-sm"></div>
+            <template x-for="m in metales" :key="m.id">
+              <div><label class="text-xs text-gray-500" x-text="'Ley ' + nombreMetal(m) + ' (' + m.unidad + ') — opcional'"></label>
+                <input type="number" step="0.001" x-model="formProduccion.leyes[m.id]" class="w-full border rounded px-2 py-1.5 text-sm"></div>
+            </template>
+            <div><label class="text-xs text-gray-500">Fecha</label><input type="date" x-model="formProduccion.fecha" class="w-full border rounded px-2 py-1.5 text-sm"></div>
+            <div class="flex gap-2 pt-1">
+              <button @click="guardarProduccion()" class="btn-primary rounded px-4 py-2 text-sm font-medium">Guardar</button>
+              <button x-show="editandoProduccionId" @click="resetFormProduccion()" class="px-4 border rounded text-sm">Cancelar</button>
+            </div>
+          </div>
+
+          <div class="card divide-y divide-gray-100">
+            <template x-for="p in listaProduccion" :key="p.id">
+              <div class="p-3 flex justify-between items-center gap-2">
+                <div class="min-w-0 flex-1">
+                  <div class="font-medium text-sm truncate" x-text="p.comentario || '(sin comentario)'"></div>
+                  <div class="text-sm text-gray-600" x-text="p.cantidad + ' ' + (proyectoActivo.unidadesDeValor === 'M3' ? 'm³' : 't') + ' · ' + fd(p.fecha)"></div>
+                  <div class="text-xs text-gray-400" x-text="config.monedaPrincipal + ' ' + fmt(valorProduccionRegistro(p))"></div>
+                </div>
+                <div class="flex gap-3 text-gray-400 shrink-0">
+                  <button @click="editarProduccion(p)" class="hover:text-primary"><i class="bi bi-pencil"></i></button>
+                  <button @click="eliminarProduccion(p.id)" class="hover:text-red-600"><i class="bi bi-trash"></i></button>
+                </div>
+              </div>
+            </template>
+            <div x-show="listaProduccion.length === 0" class="p-6 text-center text-sm text-gray-400">Sin registros aún</div>
+          </div>
+        </section>
+
+        <!-- ============ INGRESOS ============ -->
+        <section x-show="pantalla === 'ingresos'" class="space-y-4">
+          <div class="flex justify-between items-center">
+            <div>
+              <h1 class="text-xl font-semibold text-gray-800">Ingresos</h1>
+              <p class="text-sm text-gray-500">Dinero que entró al proyecto</p>
+            </div>
+            <div class="flex gap-2">
+              <button @click="exportarIngresosPDFClick()" class="btn-pdf rounded px-3 py-1.5 text-xs font-medium flex items-center gap-1"><i class="bi bi-file-earmark-pdf"></i> PDF</button>
+              <button @click="exportarIngresosExcelClick()" class="btn-excel rounded px-3 py-1.5 text-xs font-medium flex items-center gap-1"><i class="bi bi-file-earmark-excel"></i> Excel</button>
+            </div>
+          </div>
+
+          <div class="card p-4 space-y-2">
+            <h2 class="font-medium text-sm text-gray-600" x-text="editandoIngresoId ? 'Editar ingreso' : 'Nuevo ingreso'"></h2>
+            <div class="grid grid-cols-2 gap-2">
+              <div><label class="text-xs text-gray-500">Fecha</label><input type="date" x-model="formIngreso.fecha" class="w-full border rounded px-2 py-1.5 text-sm"></div>
+              <div>
+                <label class="text-xs text-gray-500">Categoría</label>
+                <select x-model="formIngreso.categoria" class="w-full border rounded px-2 py-1.5 text-sm">
+                  <template x-for="c in categoriasIngreso" :key="c.id"><option :value="c.nombre" x-text="c.nombre"></option></template>
+                </select>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div><label class="text-xs text-gray-500">Monto</label><input type="number" step="0.01" x-model="formIngreso.monto" class="w-full border rounded px-2 py-1.5 text-sm"></div>
+              <div><label class="text-xs text-gray-500">Moneda</label>
+                <select x-model="formIngreso.moneda" class="w-full border rounded px-2 py-1.5 text-sm">
+                  <option :value="config.monedaPrincipal" x-text="config.monedaPrincipal"></option><option :value="config.monedaSecundaria" x-text="config.monedaSecundaria"></option>
+                </select>
+              </div>
+            </div>
+            <div x-show="formIngreso.monto" class="text-xs text-gray-400" x-text="'≈ ' + montoConvertido(formIngreso.monto || 0, formIngreso.moneda)"></div>
+            <div><label class="text-xs text-gray-500">Tipo</label>
+              <select x-model="formIngreso.tipo" class="w-full border rounded px-2 py-1.5 text-sm"><option value="proyecto">Proyecto</option><option value="personal">Personal</option></select>
+            </div>
+            <div><label class="text-xs text-gray-500">Origen (de dónde vino)</label><input type="text" x-model="formIngreso.origen" class="w-full border rounded px-2 py-1.5 text-sm"></div>
+            <div><label class="text-xs text-gray-500">Comentario</label><input type="text" x-model="formIngreso.observacion" class="w-full border rounded px-2 py-1.5 text-sm"></div>
+            <div><label class="text-xs text-gray-500 flex items-center gap-1"><i class="bi bi-paperclip"></i> Comprobante</label><input id="archivoIngresoInput" type="file" accept="image/png,image/jpeg,image/jpg,image/bmp,image/webp,image/gif" @change="onArchivoIngreso($event)" class="w-full text-sm border rounded px-2 py-1.5"></div>
+            <div class="flex gap-2 pt-1">
+              <button @click="guardarIngreso()" class="btn-primary rounded px-4 py-2 text-sm font-medium">Guardar</button>
+              <button x-show="editandoIngresoId" @click="resetFormIngreso()" class="px-4 border rounded text-sm">Cancelar</button>
+            </div>
+          </div>
+
+          <details class="card p-4">
+            <summary class="text-sm font-medium text-gray-600 cursor-pointer">Gestionar categorías</summary>
+            <div class="mt-2 space-y-1">
+              <template x-for="c in categoriasIngreso" :key="c.id">
+                <div class="flex justify-between items-center text-sm py-1"><span x-text="c.nombre"></span><button @click="quitarCategoriaIngreso(c.id)" class="text-red-500 text-xs">Quitar</button></div>
+              </template>
+              <div class="flex gap-2 pt-2"><input type="text" x-model="nuevaCategoriaIngreso" placeholder="Nueva categoría" class="flex-1 border rounded px-2 py-1 text-sm"><button @click="agregarNuevaCategoriaIngreso()" class="btn-primary rounded px-3 text-sm">+</button></div>
+            </div>
+          </details>
+
+          <div class="card divide-y divide-gray-100">
+            <template x-for="i in listaIngresos" :key="i.id">
+              <div class="p-3 flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                  <template x-for="a in (adjuntosPorIngreso[i.id] || [])" :key="a.id">
+                    <img x-show="a.tipoArchivo === 'image'" :src="URL.createObjectURL(a.blob)" @click="abrirAdjunto(a)" class="w-10 h-10 object-cover rounded border cursor-pointer">
+                    <div x-show="a.tipoArchivo === 'pdf'" @click="abrirAdjunto(a)" class="w-10 h-10 flex items-center justify-center rounded border bg-red-50 text-red-500 cursor-pointer"><i class="bi bi-file-earmark-pdf"></i></div>
+                  </template>
+                  <div>
+                    <div class="font-medium text-sm" x-text="fd(i.fecha) + ' · ' + i.categoria"></div>
+                    <div class="text-sm text-green-600 font-medium" x-text="i.moneda + ' ' + Number(i.monto || 0).toFixed(2)"></div>
+                    <div class="text-xs text-gray-400" x-text="(i.origen ? i.origen + ' · ' : '') + (i.tipo === 'personal' ? 'Personal' : 'Proyecto')"></div>
+                  </div>
+                </div>
+                <div class="flex gap-3 text-gray-400"><button @click="editarIngreso(i)" class="hover:text-primary"><i class="bi bi-pencil"></i></button><button @click="eliminarIngreso(i.id)" class="hover:text-red-600"><i class="bi bi-trash"></i></button></div>
+              </div>
+            </template>
+            <div x-show="listaIngresos.length === 0" class="p-6 text-center text-sm text-gray-400">Sin ingresos registrados aún</div>
+          </div>
+        </section>
+
+        <!-- ============ GASTOS ============ -->
+        <section x-show="pantalla === 'gastos'" class="space-y-4">
+          <div class="flex justify-between items-center">
+            <h1 class="text-xl font-semibold text-gray-800">Gastos</h1>
+            <div class="flex gap-2 flex-wrap justify-end">
+              <button @click="exportarGastosPDFClick('proyecto')" class="btn-pdf rounded px-3 py-1.5 text-xs font-medium">PDF Proyecto</button>
+              <button @click="exportarGastosPDFClick('personal')" class="btn-pdf rounded px-3 py-1.5 text-xs font-medium">PDF Personal</button>
+              <button @click="exportarGastosExcelClick(null)" class="btn-excel rounded px-3 py-1.5 text-xs font-medium"><i class="bi bi-file-earmark-excel"></i> Excel</button>
+            </div>
+          </div>
+
+          <div class="card p-4 space-y-2">
+            <h2 class="font-medium text-sm text-gray-600" x-text="editandoGastoId ? 'Editar gasto' : 'Nuevo gasto'"></h2>
+            <div class="grid grid-cols-2 gap-2">
+              <div><label class="text-xs text-gray-500">Fecha</label><input type="date" x-model="formGasto.fecha" class="w-full border rounded px-2 py-1.5 text-sm"></div>
+              <div><label class="text-xs text-gray-500">Categoría</label>
+                <select x-model="formGasto.categoria" class="w-full border rounded px-2 py-1.5 text-sm"><template x-for="c in categoriasGasto" :key="c.id"><option :value="c.nombre" x-text="c.nombre"></option></template></select>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div><label class="text-xs text-gray-500">Monto</label><input type="number" step="0.01" x-model="formGasto.monto" class="w-full border rounded px-2 py-1.5 text-sm"></div>
+              <div><label class="text-xs text-gray-500">Moneda</label>
+                <select x-model="formGasto.moneda" class="w-full border rounded px-2 py-1.5 text-sm"><option :value="config.monedaPrincipal" x-text="config.monedaPrincipal"></option><option :value="config.monedaSecundaria" x-text="config.monedaSecundaria"></option></select>
+              </div>
+            </div>
+            <div x-show="formGasto.monto" class="text-xs text-gray-400" x-text="'≈ ' + montoConvertido(formGasto.monto || 0, formGasto.moneda)"></div>
+            <div><label class="text-xs text-gray-500">Tipo</label>
+              <select x-model="formGasto.tipo" class="w-full border rounded px-2 py-1.5 text-sm"><option value="proyecto">Proyecto</option><option value="personal">Personal</option></select>
+            </div>
+            <div><label class="text-xs text-gray-500">Comentario</label><input type="text" x-model="formGasto.observacion" class="w-full border rounded px-2 py-1.5 text-sm"></div>
+            <div><label class="text-xs text-gray-500 flex items-center gap-1"><i class="bi bi-paperclip"></i> Comprobante</label><input id="archivoGastoInput" type="file" accept="image/*,application/pdf" @change="onArchivoGasto($event)" class="w-full text-sm border rounded px-2 py-1.5"></div>
+            <div class="flex gap-2 pt-1">
+              <button @click="guardarGasto()" class="btn-primary rounded px-4 py-2 text-sm font-medium">Guardar</button>
+              <button x-show="editandoGastoId" @click="resetFormGasto()" class="px-4 border rounded text-sm">Cancelar</button>
+            </div>
+          </div>
+
+          <details class="card p-4">
+            <summary class="text-sm font-medium text-gray-600 cursor-pointer">Gestionar categorías</summary>
+            <div class="mt-2 space-y-1">
+              <template x-for="c in categoriasGasto" :key="c.id"><div class="flex justify-between items-center text-sm py-1"><span x-text="c.nombre"></span><button @click="quitarCategoriaGasto(c.id)" class="text-red-500 text-xs">Quitar</button></div></template>
+              <div class="flex gap-2 pt-2"><input type="text" x-model="nuevaCategoriaGasto" placeholder="Nueva categoría" class="flex-1 border rounded px-2 py-1 text-sm"><button @click="agregarNuevaCategoriaGasto()" class="btn-primary rounded px-3 text-sm">+</button></div>
+            </div>
+          </details>
+
+          <div class="card divide-y divide-gray-100">
+            <template x-for="g in listaGastos" :key="g.id">
+              <div class="p-3 flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                  <template x-for="a in (adjuntosPorGasto[g.id] || [])" :key="a.id">
+                    <img x-show="a.tipoArchivo === 'image'" :src="URL.createObjectURL(a.blob)" @click="abrirAdjunto(a)" class="w-10 h-10 object-cover rounded border cursor-pointer">
+                    <div x-show="a.tipoArchivo === 'pdf'" @click="abrirAdjunto(a)" class="w-10 h-10 flex items-center justify-center rounded border bg-red-50 text-red-500 cursor-pointer"><i class="bi bi-file-earmark-pdf"></i></div>
+                  </template>
+                  <div>
+                    <div class="font-medium text-sm" x-text="fd(g.fecha) + ' · ' + g.categoria"></div>
+                    <div class="text-sm text-red-600 font-medium" x-text="g.moneda + ' ' + Number(g.monto || 0).toFixed(2)"></div>
+                    <div class="text-xs text-gray-400" x-text="(g.observacion || '') + (g.tipo === 'personal' ? ' · Personal' : ' · Proyecto')"></div>
+                  </div>
+                </div>
+                <div class="flex gap-3 text-gray-400"><button @click="editarGasto(g)" class="hover:text-primary"><i class="bi bi-pencil"></i></button><button @click="eliminarGasto(g.id)" class="hover:text-red-600"><i class="bi bi-trash"></i></button></div>
+              </div>
+            </template>
+            <div x-show="listaGastos.length === 0" class="p-6 text-center text-sm text-gray-400">Sin gastos registrados aún</div>
+          </div>
+        </section>
+
+        <!-- ============ TRABAJADORES ============ -->
+        <section x-show="pantalla === 'trabajadores'" class="space-y-4">
+          <template x-if="!trabajadorSeleccionado">
+            <div class="space-y-4">
+              <div class="flex justify-between items-center">
+                <h1 class="text-xl font-semibold text-gray-800">Trabajadores</h1>
+                <div class="flex gap-2">
+                  <button @click="exportarTrabajadoresGeneralPDFClick()" class="btn-pdf rounded px-3 py-1.5 text-xs font-medium"><i class="bi bi-file-earmark-pdf"></i> PDF</button>
+                  <button @click="exportarTrabajadoresGeneralExcelClick()" class="btn-excel rounded px-3 py-1.5 text-xs font-medium"><i class="bi bi-file-earmark-excel"></i> Excel</button>
+                </div>
+              </div>
+
+              <div class="card p-4 space-y-2">
+                <h2 class="font-medium text-sm text-gray-600" x-text="editandoTrabajadorId ? 'Editar trabajador' : 'Nuevo trabajador'"></h2>
+                <input type="text" x-model="formTrabajador.nombre" placeholder="Nombre" class="w-full border rounded px-2 py-1.5 text-sm">
+                <div class="grid grid-cols-2 gap-2">
+                  <input type="number" step="0.01" x-model="formTrabajador.jornalDiario" placeholder="Jornal diario" class="w-full border rounded px-2 py-1.5 text-sm">
+                  <select x-model="formTrabajador.moneda" class="w-full border rounded px-2 py-1.5 text-sm"><option :value="config.monedaPrincipal" x-text="config.monedaPrincipal"></option><option :value="config.monedaSecundaria" x-text="config.monedaSecundaria"></option></select>
+                </div>
+                <div class="flex gap-2"><button @click="guardarTrabajador()" class="btn-primary rounded px-4 py-2 text-sm font-medium">Guardar</button><button x-show="editandoTrabajadorId" @click="resetFormTrabajador()" class="px-4 border rounded text-sm">Cancelar</button></div>
+              </div>
+
+              <div class="card p-4 space-y-2">
+                <h2 class="font-medium text-sm text-gray-600">Día laboral</h2>
+                <input type="date" x-model="fechaDiaLaboral" @change="cambiarFechaDiaLaboral($event.target.value)" class="w-full border rounded px-2 py-1.5 text-sm">
+                <template x-for="t in listaTrabajadores.filter(x => x.estado === 'activo')" :key="t.id">
+                  <div class="flex items-center justify-between py-2 border-t border-gray-100">
+                    <span class="text-sm flex items-center gap-2"><i class="bi bi-person-circle text-gray-400"></i><span x-text="t.nombre"></span></span>
+                    <div class="flex gap-1">
+                      <button @click="marcarDiaLaboral(t.id, 'trabajo')" :class="diaLaboralHoy[t.id] === 'trabajo' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'" class="px-2.5 py-1 rounded text-xs font-medium">Trabajó</button>
+                      <button @click="marcarDiaLaboral(t.id, 'no_trabajo')" :class="diaLaboralHoy[t.id] === 'no_trabajo' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600'" class="px-2.5 py-1 rounded text-xs font-medium">No trabajó</button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+
+              <div class="card divide-y divide-gray-100">
+                <template x-for="t in listaTrabajadores.filter(x => x.estado === 'activo')" :key="t.id">
+                  <div @click="abrirTrabajador(t)" class="p-3 flex justify-between items-center cursor-pointer hover:bg-gray-50">
+                    <div class="flex items-center gap-2"><i class="bi bi-person-circle text-gray-400 text-lg"></i>
+                      <div><div class="font-medium text-sm" x-text="t.nombre"></div><div class="text-sm text-gray-500" x-text="'Jornal: ' + t.moneda + ' ' + Number(t.jornalDiario || 0).toFixed(2)"></div></div>
+                    </div>
+                    <i class="bi bi-chevron-right text-gray-300"></i>
+                  </div>
+                </template>
+                <div x-show="listaTrabajadores.filter(x => x.estado === 'activo').length === 0" class="p-6 text-center text-sm text-gray-400">Sin trabajadores aún</div>
+              </div>
+            </div>
+          </template>
+
+          <template x-if="trabajadorSeleccionado">
+            <div class="space-y-4">
+              <button @click="trabajadorSeleccionado = null" class="text-primary text-sm flex items-center gap-1"><i class="bi bi-arrow-left"></i> Volver</button>
+              <div class="card p-4">
+                <h2 class="font-semibold text-lg flex items-center gap-2"><i class="bi bi-person-circle text-gray-400"></i><span x-text="trabajadorSeleccionado.nombre"></span></h2>
+                <template x-if="saldoTrabajadorSeleccionado">
+                  <div class="mt-2 space-y-1 text-sm">
+                    <div>Días trabajados: <span x-text="saldoTrabajadorSeleccionado.diasTrabajados"></span></div>
+                    <div>Devengado: <span x-text="saldoTrabajadorSeleccionado.moneda + ' ' + saldoTrabajadorSeleccionado.devengado.toFixed(2)"></span></div>
+                    <div>Pagado: <span x-text="saldoTrabajadorSeleccionado.moneda + ' ' + saldoTrabajadorSeleccionado.pagado.toFixed(2)"></span></div>
+                    <div class="font-bold text-lg pt-1" :class="saldoTrabajadorSeleccionado.saldo > 0 ? 'text-red-600' : 'text-green-600'"
+                      x-text="saldoTrabajadorSeleccionado.saldo > 0 ? 'Debe: ' + saldoTrabajadorSeleccionado.moneda + ' ' + saldoTrabajadorSeleccionado.saldo.toFixed(2) : (saldoTrabajadorSeleccionado.saldo < 0 ? 'Pago en exceso' : 'Pagado completo')"></div>
+                  </div>
+                </template>
+              </div>
+
+              <div class="card p-4 space-y-2">
+                <h3 class="font-medium text-sm text-gray-600" x-text="editandoPagoId ? 'Editar pago' : 'Registrar pago'"></h3>
+                <input type="number" step="0.01" x-model="formPago.monto" placeholder="Monto" class="w-full border rounded px-2 py-1.5 text-sm">
+                <select x-model="formPago.metodo" class="w-full border rounded px-2 py-1.5 text-sm"><option value="Transferencia">Transferencia</option><option value="Efectivo">Efectivo</option></select>
+                <div><label class="text-xs text-gray-500 flex items-center gap-1"><i class="bi bi-paperclip"></i> Voucher / foto de conformidad</label><input id="archivoPagoInput" type="file" accept="image/*,application/pdf" @change="onArchivoPago($event)" class="w-full text-sm border rounded px-2 py-1.5"></div>
+                <div class="flex gap-2"><button @click="registrarPago()" class="btn-primary rounded px-4 py-2 text-sm font-medium">Guardar pago</button><button x-show="editandoPagoId" @click="cancelarPago()" class="px-4 border rounded text-sm">Cancelar</button></div>
+              </div>
+
+              <div class="card divide-y divide-gray-100">
+                <template x-for="p in historialPagos" :key="p.id">
+                  <div class="p-3 flex justify-between items-center gap-3">
+                    <div class="flex items-center gap-3 min-w-0">
+                      <template x-for="a in (adjuntosPorPago[p.id] || [])" :key="a.id">
+                        <img x-show="a.tipoArchivo === 'image'" :src="URL.createObjectURL(a.blob)" @click="abrirAdjunto(a)" class="w-10 h-10 object-cover rounded border cursor-pointer shrink-0">
+                        <div x-show="a.tipoArchivo === 'pdf'" @click="abrirAdjunto(a)" class="w-10 h-10 flex items-center justify-center rounded border bg-red-50 text-red-500 cursor-pointer shrink-0"><i class="bi bi-file-earmark-pdf"></i></div>
+                      </template>
+                      <div class="min-w-0"><div class="text-sm font-medium" x-text="fd(p.fecha) + ' · ' + p.metodo"></div><div class="text-sm text-gray-500" x-text="fmt(p.monto)"></div></div>
+                    </div>
+                    <div class="flex gap-3 text-gray-400 shrink-0"><button @click="editarPago(p)" class="hover:text-primary"><i class="bi bi-pencil"></i></button><button @click="eliminarPago(p.id)" class="hover:text-red-600"><i class="bi bi-trash"></i></button></div>
+                  </div>
+                </template>
+              </div>
+
+              <div class="flex gap-2">
+                <button @click="exportarTrabajadorPDFClick()" class="flex-1 btn-pdf rounded-lg py-2.5 text-sm font-medium flex items-center justify-center gap-2"><i class="bi bi-file-earmark-pdf"></i> PDF</button>
+                <button @click="exportarTrabajadorExcelClick()" class="flex-1 btn-excel rounded-lg py-2.5 text-sm font-medium flex items-center justify-center gap-2"><i class="bi bi-file-earmark-excel"></i> Excel</button>
+              </div>
+
+              <button @click="despedirTrabajador(trabajadorSeleccionado.id)" class="w-full text-red-600 text-sm py-2">Despedir trabajador</button>
+            </div>
+          </template>
+        </section>
+
+        <!-- ============ CAJA CHICA ============ -->
+        <section x-show="pantalla === 'caja'" class="space-y-4">
+          <template x-if="!cajaSeleccionada">
+            <div class="space-y-4">
+              <h1 class="text-xl font-semibold text-gray-800">Caja chica</h1>
+              <div class="card p-4 space-y-2">
+                <h2 class="font-medium text-sm text-gray-600" x-text="editandoCajaId ? 'Editar caja chica' : 'Nueva caja chica'"></h2>
+                <input type="text" x-model="formCaja.nombre" placeholder="Nombre (ej. Compra de insumos en Cusco)" class="w-full border rounded px-2 py-1.5 text-sm">
+                <div class="grid grid-cols-2 gap-2">
+                  <input type="number" step="0.01" x-model="formCaja.montoEntregado" placeholder="Monto entregado" class="w-full border rounded px-2 py-1.5 text-sm">
+                  <select x-model="formCaja.moneda" class="w-full border rounded px-2 py-1.5 text-sm"><option :value="config.monedaPrincipal" x-text="config.monedaPrincipal"></option><option :value="config.monedaSecundaria" x-text="config.monedaSecundaria"></option></select>
+                </div>
+                <div class="flex gap-2"><button @click="guardarCaja()" class="btn-primary rounded px-4 py-2 text-sm font-medium">Guardar</button><button x-show="editandoCajaId" @click="resetFormCaja()" class="px-4 border rounded text-sm">Cancelar</button></div>
+              </div>
+              <div class="card divide-y divide-gray-100">
+                <template x-for="c in listaCajas" :key="c.id">
+                  <div class="p-3 flex justify-between items-center hover:bg-gray-50">
+                    <div @click="abrirCaja(c)" class="cursor-pointer flex-1"><div class="font-medium text-sm" x-text="c.nombre"></div><div class="text-sm text-gray-500" x-text="c.moneda + ' ' + Number(c.montoEntregado || 0).toFixed(2) + ' entregado'"></div></div>
+                    <div class="flex gap-3 text-gray-400"><button @click="editarCaja(c)" class="hover:text-primary"><i class="bi bi-pencil"></i></button><button @click="eliminarCaja(c.id)" class="hover:text-red-600"><i class="bi bi-trash"></i></button></div>
+                  </div>
+                </template>
+                <div x-show="listaCajas.length === 0" class="p-6 text-center text-sm text-gray-400">Sin cajas chicas aún</div>
+              </div>
+            </div>
+          </template>
+
+          <template x-if="cajaSeleccionada">
+            <div class="space-y-4">
+              <button @click="cajaSeleccionada = null" class="text-primary text-sm flex items-center gap-1"><i class="bi bi-arrow-left"></i> Volver</button>
+              <div class="card p-4">
+                <h2 class="font-semibold text-lg" x-text="cajaSeleccionada.nombre"></h2>
+                <template x-if="saldoCajaSeleccionada">
+                  <div class="mt-2 space-y-1 text-sm">
+                    <div>Entregado: <span x-text="cajaSeleccionada.moneda + ' ' + Number(cajaSeleccionada.montoEntregado || 0).toFixed(2)"></span></div>
+                    <div>Gastado (proyecto): <span x-text="cajaSeleccionada.moneda + ' ' + saldoCajaSeleccionada.gastoProyecto.toFixed(2)"></span></div>
+                    <div>Gastado (personal): <span x-text="cajaSeleccionada.moneda + ' ' + saldoCajaSeleccionada.gastoPersonal.toFixed(2)"></span></div>
+                    <div class="font-bold text-lg pt-1" :class="saldoCajaSeleccionada.saldo >= 0 ? 'text-green-600' : 'text-red-600'"
+                      x-text="saldoCajaSeleccionada.saldo >= 0 ? 'Devolver al proyecto: ' + cajaSeleccionada.moneda + ' ' + saldoCajaSeleccionada.saldo.toFixed(2) : 'Proyecto debe reembolsar: ' + cajaSeleccionada.moneda + ' ' + Math.abs(saldoCajaSeleccionada.saldo).toFixed(2)"></div>
+                  </div>
+                </template>
+              </div>
+
+              <div class="card p-4 space-y-2">
+                <h3 class="font-medium text-sm text-gray-600">Nuevo movimiento</h3>
+                <input type="date" x-model="formMovimiento.fecha" class="w-full border rounded px-2 py-1.5 text-sm">
+                <select x-model="formMovimiento.tipo" class="w-full border rounded px-2 py-1.5 text-sm"><option value="proyecto">Gasto de Proyecto</option><option value="personal">Gasto Personal</option></select>
+                <select x-model="formMovimiento.categoria" class="w-full border rounded px-2 py-1.5 text-sm"><template x-for="c in categoriasCaja" :key="c"><option :value="c" x-text="c"></option></template></select>
+                <input type="number" step="0.01" x-model="formMovimiento.monto" placeholder="Monto" class="w-full border rounded px-2 py-1.5 text-sm">
+                <input type="text" x-model="formMovimiento.observacion" placeholder="Observación" class="w-full border rounded px-2 py-1.5 text-sm">
+                <div><label class="text-xs text-gray-500 flex items-center gap-1"><i class="bi bi-paperclip"></i> Comprobante</label><input id="archivoMovimientoInput" type="file" accept="image/*,application/pdf" @change="onArchivoMovimiento($event)" class="w-full text-sm border rounded px-2 py-1.5"></div>
+                <button @click="guardarMovimiento()" class="btn-primary rounded px-4 py-2 text-sm font-medium">Agregar movimiento</button>
+              </div>
+
+              <div class="card divide-y divide-gray-100">
+                <template x-for="m in (saldoCajaSeleccionada ? saldoCajaSeleccionada.movimientos : [])" :key="m.id">
+                  <div class="p-3 flex items-center gap-3">
+                    <template x-for="a in (adjuntosPorMovimiento[m.id] || [])" :key="a.id"><img x-show="a.tipoArchivo === 'image'" :src="URL.createObjectURL(a.blob)" @click="abrirAdjunto(a)" class="w-10 h-10 object-cover rounded border cursor-pointer"></template>
+                    <div class="flex-1"><div class="text-sm font-medium" x-text="fd(m.fecha) + ' · ' + m.categoria"></div><div class="text-xs text-gray-400" x-text="m.observacion"></div></div>
+                    <div class="text-sm font-medium" :class="m.tipo === 'proyecto' ? 'text-red-600' : 'text-gray-400'" x-text="Number(m.monto || 0).toFixed(2)"></div>
+                  </div>
+                </template>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2">
+                <button @click="exportarCajaPDFClick('proyecto')" class="btn-pdf rounded-lg py-2 text-xs font-medium">PDF Proyecto</button>
+                <button @click="exportarCajaPDFClick('personal')" class="btn-pdf rounded-lg py-2 text-xs font-medium">PDF Personal</button>
+                <button @click="exportarCajaExcelClick(null)" class="btn-excel rounded-lg py-2 text-xs font-medium col-span-2">Excel completo</button>
+              </div>
+            </div>
+          </template>
+        </section>
+
+        <!-- ============ CONFIGURACIÓN ============ -->
+        <section x-show="pantalla === 'config'" class="space-y-4">
+          <h1 class="text-xl font-semibold text-gray-800">Configuración</h1>
+
+          <div class="card p-4 space-y-3">
+            <h2 class="font-medium text-sm text-gray-600">Datos del proyecto</h2>
+            <div><label class="text-xs text-gray-500">Nombre del proyecto</label><input type="text" x-model="formProyectoNombre" class="w-full border rounded px-2 py-1.5 text-sm"></div>
+            <div>
+              <label class="text-xs text-gray-500">Unidad de producción diaria</label>
+              <select x-model="formProyectoUnidad" class="w-full border rounded px-2 py-1.5 text-sm">
+                <template x-for="u in UNIDADES_PRODUCCION" :key="u.v"><option :value="u.v" x-text="u.l"></option></template>
+              </select>
+            </div>
+            <button @click="guardarDatosProyecto()" class="btn-primary rounded px-4 py-2 text-sm font-medium">Guardar</button>
+          </div>
+
+          <div class="card p-4 space-y-3">
+            <h2 class="font-medium text-sm text-gray-600">Metales</h2>
+            <div class="grid grid-cols-2 gap-2">
+              <select x-model="formMetal.nombre" class="border rounded px-2 py-1.5 text-sm"><template x-for="m in METALES_PREDEFINIDOS" :key="m.c"><option :value="m.c" x-text="m.c === 'Otro' ? 'Otro' : (m.c + ' - ' + m.n)"></option></template></select>
+              <input x-show="formMetal.nombre === 'Otro'" type="text" x-model="formMetal.nombreOtro" placeholder="Nombre del metal" class="border rounded px-2 py-1.5 text-sm">
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <select x-model="formMetal.unidad" class="w-full border rounded px-2 py-1.5 text-sm"><template x-for="u in UNIDADES_VALOR" :key="u"><option :value="u" x-text="u"></option></template></select>
+                <input x-show="formMetal.unidad === 'otro'" type="text" x-model="formMetal.unidadOtro" placeholder="Unidad personalizada" class="w-full border rounded px-2 py-1.5 text-sm mt-1">
+              </div>
+              <select x-model="formMetal.moneda" class="border rounded px-2 py-1.5 text-sm h-fit"><option :value="config.monedaPrincipal" x-text="config.monedaPrincipal"></option><option :value="config.monedaSecundaria" x-text="config.monedaSecundaria"></option></select>
+            </div>
+            <input type="number" step="0.01" x-model="formMetal.precio" :placeholder="'Precio por ' + (formMetal.unidad === 'otro' ? formMetal.unidadOtro : formMetal.unidad)" class="w-full border rounded px-2 py-1.5 text-sm">
+            <div class="flex gap-2"><button @click="guardarMetal()" class="btn-primary rounded px-4 py-2 text-sm font-medium">Agregar metal</button><button x-show="editandoMetalId" @click="resetFormMetal()" class="px-4 border rounded text-sm">Cancelar</button></div>
+            <div class="divide-y divide-gray-100">
+              <template x-for="m in metales" :key="m.id">
+                <div class="flex justify-between items-center py-2 text-sm">
+                  <span x-text="nombreMetal(m) + ': ' + (m.precio || 0) + ' ' + m.moneda + '/' + unidadMetal(m)"></span>
+                  <div class="flex gap-3 text-gray-400"><button @click="editarMetal(m)" class="hover:text-primary"><i class="bi bi-pencil"></i></button><button @click="eliminarMetal(m.id)" class="hover:text-red-600"><i class="bi bi-trash"></i></button></div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <div class="card p-4 space-y-3">
+            <h2 class="font-medium text-sm text-gray-600">General</h2>
+            <div class="grid grid-cols-2 gap-2">
+              <div><label class="text-xs text-gray-500">Moneda principal</label><input type="text" x-model="config.monedaPrincipal" placeholder="PEN, MXN, COP..." class="w-full border rounded px-2 py-1.5 text-sm uppercase"></div>
+              <div><label class="text-xs text-gray-500">Moneda secundaria</label><input type="text" x-model="config.monedaSecundaria" placeholder="USD..." class="w-full border rounded px-2 py-1.5 text-sm uppercase"></div>
+            </div>
+            <div><label class="text-xs text-gray-500" x-text="'Tipo de cambio (1 ' + (config.monedaSecundaria || 'USD') + ' = ? ' + (config.monedaPrincipal || 'PEN') + ')'"></label><input type="number" step="0.01" x-model="config.tipoCambioUsdPen" class="w-full border rounded px-2 py-1.5 text-sm"></div>
+            <button @click="guardarConfigGeneral()" class="btn-primary rounded px-4 py-2 text-sm font-medium">Guardar</button>
+          </div>
+
+          <div class="card p-4 space-y-2">
+            <h2 class="font-medium text-sm text-gray-600">Copia de seguridad y comprobantes</h2>
+            <button @click="exportar()" class="w-full border rounded py-2 text-sm font-medium flex items-center justify-center gap-2"><i class="bi bi-download"></i> Exportar copia de datos (.json)</button>
+            <label class="w-full border rounded py-2 text-sm font-medium flex items-center justify-center gap-2 cursor-pointer"><i class="bi bi-upload"></i> Importar copia<input type="file" accept=".json" @change="importar($event)" class="hidden"></label>
+            <button @click="exportarComprobantes()" class="w-full border rounded py-2 text-sm font-medium flex items-center justify-center gap-2 text-primary border-primary"><i class="bi bi-file-earmark-zip"></i> Descargar todos los comprobantes (.zip)</button>
+          </div>
+
+          <div class="card p-4 text-center text-xs text-gray-400 space-y-1">
+            <div>MinControl: V1.0</div>
+            <div>Desarrollado por INFOSET (infoset.org.pe)</div>
+            <div>Contactos: infoset.org.pe/contactos.html</div>
+            <div class="pt-2 text-[10px]" x-show="config.deviceId">Código de dispositivo: <span class="font-mono" x-text="config.deviceId"></span></div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Visor de adjuntos -->
+<div x-show="visorAbierto" x-cloak @click="cerrarVisor()" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+  <div @click.stop class="max-w-3xl max-h-full">
+    <div class="flex justify-between items-center mb-2 text-white text-sm"><span x-text="visorNombre"></span><button @click="cerrarVisor()" class="text-2xl leading-none"><i class="bi bi-x-lg"></i></button></div>
+    <img x-show="visorTipo === 'image'" :src="visorUrl" class="max-w-full max-h-[80vh] rounded">
+    <iframe x-show="visorTipo === 'pdf'" :src="visorUrl" class="w-[80vw] h-[80vh] bg-white rounded"></iframe>
+  </div>
+</div>
+
+<!-- Toast -->
+<div x-show="toast.visible" x-transition class="fixed bottom-4 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-sm px-4 py-2.5 rounded-lg shadow-lg z-50 flex items-center gap-2">
+  <i class="bi bi-check-circle-fill text-green-400"></i> <span x-text="toast.mensaje"></span>
+</div>
+
+<!-- Pantalla de bloqueo: prueba vencida / sin licencia -->
+<div x-show="!cargando && bloqueado" x-cloak class="fixed inset-0 bg-white z-[60] flex items-center justify-center p-4">
+  <div class="max-w-sm w-full text-center space-y-4">
+    <div class="w-14 h-14 mx-auto rounded-full bg-red-50 text-red-500 flex items-center justify-center text-2xl"><i class="bi bi-lock-fill"></i></div>
+    <h2 class="text-lg font-semibold text-gray-800">Período de prueba terminado</h2>
+    <p class="text-sm text-gray-500">Para seguir usando MinControl, active su licencia. Envíe el código de su dispositivo junto con su comprobante de pago.</p>
+
+    <div class="card p-3 text-left">
+      <div class="text-xs text-gray-500">Código de dispositivo</div>
+      <div class="font-mono text-sm font-medium" x-text="config.deviceId"></div>
+    </div>
+
+    <div class="text-left">
+      <label class="text-xs text-gray-500">Clave de licencia</label>
+      <input type="text" x-model="licenciaInput" placeholder="Pegue aquí la clave que le enviaron" class="w-full border rounded px-3 py-2 text-sm font-mono">
+      <p x-show="licenciaError" class="text-xs text-red-600 mt-1" x-text="licenciaError"></p>
+    </div>
+    <button @click="activarLicencia()" class="btn-primary rounded-lg px-4 py-2.5 text-sm font-medium w-full">Activar licencia</button>
+    <p class="text-xs text-gray-400">Contacto: infoset.org.pe/contactos.html</p>
+  </div>
+</div>
+
+<!-- Aviso de días restantes de prueba (no bloquea) -->
+<div x-show="!cargando && !bloqueado && !licenciaEstado && diasRestantesPrueba <= 5" x-cloak
+  class="fixed top-0 inset-x-0 bg-amber-50 border-b border-amber-200 text-amber-800 text-xs text-center py-1.5 z-40">
+  Quedan <span x-text="diasRestantesPrueba"></span> día(s) de prueba gratuita.
+</div>
+
+</body>
+</html>

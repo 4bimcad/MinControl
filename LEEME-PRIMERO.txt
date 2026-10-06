@@ -1,0 +1,29 @@
+MinControl — Cómo iniciar correctamente
+========================================
+
+IMPORTANTE: no abra "index.html" haciendo doble clic directamente.
+Los navegadores (Chrome sobre todo) a veces no guardan los datos de forma
+confiable cuando el archivo se abre así ("file://"). Para que TODO se
+guarde siempre de forma segura, use el servidor local incluido:
+
+EN WINDOWS:
+  1. Doble clic en "iniciar-servidor.bat"
+  2. Se abrirá el navegador solo, en http://localhost:8000
+  3. Use la aplicación normalmente
+  4. Para cerrar: cierre la ventana negra (consola) cuando termine
+
+EN MAC:
+  1. Doble clic en "iniciar-servidor.command"
+     (si pide permiso, vaya a Preferencias > Seguridad y permita abrirlo)
+  2. Se abrirá el navegador solo, en http://localhost:8000
+
+REQUISITO: necesita tener Python instalado (la mayoría de PCs ya lo
+tienen). Si al hacer doble clic no pasa nada, instale Python desde
+python.org (opción "Add to PATH" durante la instalación) e intente de nuevo.
+
+EN ANDROID (celular):
+  El método de servidor local no aplica igual — simplemente abra
+  index.html con Chrome como ya lo hace. El problema de guardado es
+  principalmente de Chrome en computadoras; en Android suele funcionar
+  bien igualmente. Si nota el mismo problema, instale la app "Termux"
+  y avise para darle instrucciones de servidor local en Android también.

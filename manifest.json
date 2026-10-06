@@ -1,0 +1,33 @@
+{
+  "name": "MinControl",
+  "short_name": "MinControl",
+  "description": "Control de producción, costos y trabajadores para minería artesanal.",
+  "start_url": "/",
+  "scope": "/",
+  "id": "/mincontrol",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f9fafb",
+  "theme_color": "#1f2937",
+  "lang": "es",
+  "dir": "ltr",
+  "categories": [
+    "business",
+    "finance",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
