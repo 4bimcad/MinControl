@@ -3,8 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="author" content="Stanislav Tsvitkov">
+<meta name="publisher" content="INCAJATA S.A.C.">
+<meta name="description" content="MinControl es una aplicación de gestión para minería artesanal y pequeña minería, desarrollada por INFOSET, marca de INCAJATA S.A.C., en Arequipa, Perú.">
+
+<meta property="og:title" content="MinControl — Gestión para minería">
+<meta property="og:description" content="Control de producción, costos, trabajadores y operaciones para minería artesanal y pequeña minería.">
+<meta property="og:site_name" content="INFOSET">
+<meta property="og:url" content="https://infoset.org.pe/">
+<meta property="og:locale" content="es_PE">
 <title>MinControl</title>
-<link rel="manifest" href="manifest.json" />
+<link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="vendor/bootstrap-icons/bootstrap-icons.css">
 <link rel="stylesheet" href="vendor/inter/inter.css">
 <style>
@@ -554,8 +563,8 @@
 
           <div class="card p-4 text-center text-xs text-gray-400 space-y-1">
             <div>MinControl: V1.0</div>
-            <div>Desarrollado por INFOSET (infoset.org.pe)</div>
-            <div>Contactos: infoset.org.pe/contactos.html</div>
+            <div>Desarrollado por INFOSET | <a href="http://infoset.org.pe" target="_blank">http://infoset.org.pe</a></div>
+            <div>WhatsApp: <a href="https://wa.me/51913090906" target="_blank">+51 913 090 906</a></div>
             <div class="pt-2 text-[10px]" x-show="config.deviceId">Código de dispositivo: <span class="font-mono" x-text="config.deviceId"></span></div>
           </div>
         </section>
@@ -582,22 +591,35 @@
 <!-- Pantalla de bloqueo: prueba vencida / sin licencia -->
 <div x-show="!cargando && bloqueado" x-cloak class="fixed inset-0 bg-white z-[60] flex items-center justify-center p-4">
   <div class="max-w-sm w-full text-center space-y-4">
-    <div class="w-14 h-14 mx-auto rounded-full bg-red-50 text-red-500 flex items-center justify-center text-2xl"><i class="bi bi-lock-fill"></i></div>
-    <h2 class="text-lg font-semibold text-gray-800">Período de prueba terminado</h2>
-    <p class="text-sm text-gray-500">Para seguir usando MinControl, active su licencia. Envíe el código de su dispositivo junto con su comprobante de pago.</p>
+    <template x-if="navegadorIncompatible">
+      <div class="space-y-4">
+        <div class="w-14 h-14 mx-auto rounded-full bg-amber-50 text-amber-500 flex items-center justify-center text-2xl"><i class="bi bi-phone"></i></div>
+        <h2 class="text-lg font-semibold text-gray-800">Actualización necesaria</h2>
+        <p class="text-sm text-gray-500">Su navegador o Android es demasiado antiguo para verificar licencias de forma segura. Esto <b>no</b> es un problema con su código — actualice Google Chrome (Play Store → busque "Chrome" → Actualizar) y vuelva a abrir MinControl.</p>
+        <p class="text-xs text-gray-400">Si ya tiene la última versión y sigue viendo esto, contacte: infoset.org.pe/contactos.html</p>
+      </div>
+    </template>
 
-    <div class="card p-3 text-left">
-      <div class="text-xs text-gray-500">Código de dispositivo</div>
-      <div class="font-mono text-sm font-medium" x-text="config.deviceId"></div>
-    </div>
+    <template x-if="!navegadorIncompatible">
+      <div class="space-y-4">
+        <div class="w-14 h-14 mx-auto rounded-full bg-red-50 text-red-500 flex items-center justify-center text-2xl"><i class="bi bi-lock-fill"></i></div>
+        <h2 class="text-lg font-semibold text-gray-800">Período de prueba terminado</h2>
+        <p class="text-sm text-gray-500">Para seguir usando MinControl, por favor active su licencia. Envíe el código de su dispositivo por WhatsApp al <strong>+51 913 090 906</strong> para recibir los datos de pago. También puede contactarnos en <b>http://infoset.org.pe</b>.</p>
 
-    <div class="text-left">
-      <label class="text-xs text-gray-500">Clave de licencia</label>
-      <input type="text" x-model="licenciaInput" placeholder="Pegue aquí la clave que le enviaron" class="w-full border rounded px-3 py-2 text-sm font-mono">
-      <p x-show="licenciaError" class="text-xs text-red-600 mt-1" x-text="licenciaError"></p>
-    </div>
-    <button @click="activarLicencia()" class="btn-primary rounded-lg px-4 py-2.5 text-sm font-medium w-full">Activar licencia</button>
-    <p class="text-xs text-gray-400">Contacto: infoset.org.pe/contactos.html</p>
+
+        <div class="card p-3 text-left">
+          <div class="text-xs text-gray-500">Código de dispositivo</div>
+          <div class="font-mono text-sm font-medium" x-text="config.deviceId"></div>
+        </div>
+
+        <div class="text-left">
+          <label class="text-xs text-gray-500">Clave de licencia</label>
+          <input type="text" x-model="licenciaInput" placeholder="Pegue aquí la clave que le enviaron" class="w-full border rounded px-3 py-2 text-sm font-mono">
+          <p x-show="licenciaError" class="text-xs text-red-600 mt-1" x-text="licenciaError"></p>
+        </div>
+        <button @click="activarLicencia()" class="btn-primary rounded-lg px-4 py-2.5 text-sm font-medium w-full">Activar licencia</button>
+      </div>
+    </template>
   </div>
 </div>
 

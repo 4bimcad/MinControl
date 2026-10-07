@@ -1,110 +1,29 @@
-// ==========================================================
-// MinControl — Licencia offline con Ed25519
-// ==========================================================
-//
-// La app contiene SOLAMENTE la CLAVE PÚBLICA.
-// La CLAVE PRIVADA nunca debe estar aquí.
-//
-// Formato de licencia:
-//
-// DEVICE_ID-EXPIRY-SIGNATURE
-//
-// Ejemplo:
-//
-// D3F8K2-A1B2-2027-02-03-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-//
-// expiry:
-//   PERM
-//   YYYY-MM-DD
-//
-// ==========================================================
+/* =========================================================
+   MINCONTROL — LICENCIA SIMPLE OFFLINE
+   =========================================================
+
+   Formato:
+
+   MC-DEVICE-ID-PERM-XXXXXXXXXXXXXXXXXXXXXXXX
+
+   o
+
+   MC-DEVICE-ID-YYYY-MM-DD-XXXXXXXXXXXXXXXXXXXXXXXX
+
+   Ejemplos:
+
+   MC-DLO2BLDHEP1-PERM-A8F2K9L4M7Q1X6C3V5N0R8TZ
+
+   MC-DLO2BLDHEP1-2027-02-03-X7K9P2M8Q4L1Z6N3R5T0W8AB
+
+   Sistema simple de activación offline.
+   No utiliza firma digital ni criptografía.
+========================================================= */
 
 
-// ==========================================================
-// CONFIGURACIÓN
-// ==========================================================
-
-// Pegue aquí la CLAVE PÚBLICA Ed25519 generada por
-// generador-licencias.html.
-//
-// Será una cadena Base64URL de 32 bytes.
-//
-// EJEMPLO:
-// const MINCONTROL_PUBLIC_KEY_B64U = 'abc123...';
-//
-const MINCONTROL_PUBLIC_KEY_B64U =
-  'YXEGeCX1TF22oNVIBxvr0yUgJ3gXATknsE9Qmxdi0zg';
-
-
-// ==========================================================
-// BASE64URL → BYTES
-// ==========================================================
-
-function base64UrlToBytes(base64url) {
-
-  const base64 = base64url
-    .replace(/-/g, '+')
-    .replace(/_/g, '/')
-    .padEnd(
-      Math.ceil(base64url.length / 4) * 4,
-      '='
-    );
-
-  const binary = atob(base64);
-
-  return Uint8Array.from(
-    binary,
-    c => c.charCodeAt(0)
-  );
-}
-
-
-// ==========================================================
-// IMPORTAR CLAVE PÚBLICA
-// ==========================================================
-
-async function importarClavePublica() {
-
-  if (
-    !MINCONTROL_PUBLIC_KEY_B64U ||
-    MINCONTROL_PUBLIC_KEY_B64U ===
-      'REEMPLAZAR_CON_SU_CLAVE_PUBLICA'
-  ) {
-    throw new Error(
-      'La clave pública Ed25519 no está configurada.'
-    );
-  }
-
-  const rawPublicKey =
-    base64UrlToBytes(
-      MINCONTROL_PUBLIC_KEY_B64U
-    );
-
-  if (rawPublicKey.length !== 32) {
-    throw new Error(
-      'La clave pública Ed25519 debe tener 32 bytes.'
-    );
-  }
-
-  return crypto.subtle.importKey(
-    'raw',
-    rawPublicKey,
-    {
-      name: 'Ed25519'
-    },
-    false,
-    ['verify']
-  );
-}
-
-
-// ==========================================================
-// FECHA LOCAL
-// ==========================================================
-//
-// No usamos toISOString() para evitar problemas cerca
-// de medianoche por diferencias UTC / hora local.
-// ==========================================================
+/* =========================================================
+   FECHA LOCAL EN FORMATO YYYY-MM-DD
+========================================================= */
 
 function fechaLocalISO() {
 
@@ -117,12 +36,66 @@ function fechaLocalISO() {
     '-' +
     String(ahora.getDate()).padStart(2, '0')
   );
+
 }
 
 
-// ==========================================================
-// VALIDAR LICENCIA
-// ==========================================================
+/* =========================================================
+   VALIDAR FECHA
+========================================================= */
+
+function fechaISOValida(fecha) {
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+    return false;
+  }
+
+  const partes = fecha.split('-').map(Number);
+
+  const año = partes[0];
+  const mes = partes[1];
+  const dia = partes[2];
+
+  const d = new Date(
+    año,
+    mes - 1,
+    dia
+  );
+
+  return (
+    d.getFullYear() === año &&
+    d.getMonth() === mes - 1 &&
+    d.getDate() === dia
+  );
+
+}
+
+
+/* =========================================================
+   VALIDAR CÓDIGO FINAL DE 24 CARACTERES
+========================================================= */
+
+function codigo24Valido(codigo) {
+
+  return /^[A-Z0-9]{24}$/.test(codigo);
+
+}
+
+
+/* =========================================================
+   COMPATIBILIDAD DEL NAVEGADOR
+========================================================= */
+
+async function navegadorEsCompatible() {
+
+  return true;
+
+}
+
+
+/* =========================================================
+   VALIDAR LICENCIA
+========================================================= */
 
 async function validarLicencia(
   licenseKey,
@@ -135,197 +108,263 @@ async function validarLicencia(
       valida: false,
       motivo: 'licencia o dispositivo faltante'
     };
+
   }
 
   try {
 
-    const key =
-      licenseKey.trim();
+    const licencia =
+      licenseKey
+        .trim()
+        .toUpperCase();
 
-    // ------------------------------------------------------
-    // La firma está después del último "-"
-    // ------------------------------------------------------
+    const dispositivo =
+      deviceId
+        .trim()
+        .toUpperCase();
 
-    const ultimoGuion =
-      key.lastIndexOf('-');
 
-    if (ultimoGuion <= 0) {
+    /* =====================================================
+       PREFIJO
+    ===================================================== */
+
+    if (!licencia.startsWith('MC-')) {
 
       return {
         valida: false,
         motivo: 'formato inválido'
       };
+
     }
 
-    const firmaB64u =
-      key.slice(
-        ultimoGuion + 1
-      );
 
-    const contenido =
-      key.slice(
-        0,
-        ultimoGuion
-      );
+    /* =====================================================
+       SEPARAR LICENCIA
+    ===================================================== */
 
-    // ------------------------------------------------------
-    // Extraemos expiry desde el final.
-    //
-    // Permitimos:
-    //
-    // PERM
-    // YYYY-MM-DD
-    // ------------------------------------------------------
+    const partes =
+      licencia.split('-');
 
-    const match =
-      contenido.match(
-        /^(.*)-(\d{4}-\d{2}-\d{2}|PERM)$/
-      );
 
-    if (!match) {
+    /*
+       Permanente:
+
+       MC-DEVICE-PERM-CODIGO24
+
+       = 4 partes
+
+
+       Con fecha:
+
+       MC-DEVICE-YYYY-MM-DD-CODIGO24
+
+       = 6 partes
+    */
+
+
+    /* =====================================================
+       COMPROBAR FORMATO GENERAL
+    ===================================================== */
+
+    if (
+      partes.length !== 4 &&
+      partes.length !== 6
+    ) {
 
       return {
         valida: false,
         motivo: 'formato de licencia inválido'
       };
+
     }
 
-    const deviceIdEnLicencia =
-      match[1].toUpperCase();
+
+    /* =====================================================
+       DEVICE ID
+    ===================================================== */
+
+    const deviceIdLicencia =
+      partes[1];
+
+
+    if (!deviceIdLicencia) {
+
+      return {
+        valida: false,
+        motivo: 'formato de licencia inválido'
+      };
+
+    }
+
+
+    /* =====================================================
+       COMPROBAR DEVICE ID
+    ===================================================== */
+
+    if (
+      deviceIdLicencia !== dispositivo
+    ) {
+
+      return {
+        valida: false,
+        motivo: 'no corresponde a este dispositivo'
+      };
+
+    }
+
+
+    /* =====================================================
+       LICENCIA PERMANENTE
+       
+       MC-DEVICE-PERM-CODIGO24
+    ===================================================== */
+
+    if (partes.length === 4) {
+
+      const tipo =
+        partes[2];
+
+      const codigo24 =
+        partes[3];
+
+
+      if (tipo !== 'PERM') {
+
+        return {
+          valida: false,
+          motivo: 'formato de licencia inválido'
+        };
+
+      }
+
+
+      if (
+        !codigo24Valido(codigo24)
+      ) {
+
+        return {
+          valida: false,
+          motivo: 'código de licencia inválido'
+        };
+
+      }
+
+
+      return {
+
+        valida: true,
+
+        expiry: 'PERM',
+
+        codigo24: codigo24
+
+      };
+
+    }
+
+
+    /* =====================================================
+       LICENCIA CON FECHA
+       
+       MC-DEVICE-YYYY-MM-DD-CODIGO24
+    ===================================================== */
+
+    const año =
+      partes[2];
+
+    const mes =
+      partes[3];
+
+    const dia =
+      partes[4];
+
+    const codigo24 =
+      partes[5];
+
+
+    /* =====================================================
+       CONSTRUIR FECHA
+    ===================================================== */
 
     const expiry =
-      match[2].toUpperCase();
+      año +
+      '-' +
+      mes +
+      '-' +
+      dia;
 
-    // ------------------------------------------------------
-    // Verificar dispositivo
-    // ------------------------------------------------------
+
+    /* =====================================================
+       VALIDAR FECHA
+    ===================================================== */
 
     if (
-      deviceIdEnLicencia !==
-      deviceId.trim().toUpperCase()
+      !fechaISOValida(expiry)
     ) {
 
       return {
         valida: false,
-        motivo:
-          'no corresponde a este dispositivo'
+        motivo: 'fecha de vencimiento inválida'
       };
+
     }
 
-    // ------------------------------------------------------
-    // Convertir firma
-    // ------------------------------------------------------
 
-    const firma =
-      base64UrlToBytes(
-        firmaB64u
-      );
-
-    if (firma.length !== 64) {
-
-      return {
-        valida: false,
-        motivo: 'firma inválida'
-      };
-    }
-
-    // ------------------------------------------------------
-    // EXACTAMENTE el mismo texto que firma el generador
-    // ------------------------------------------------------
-
-    const mensaje =
-      `${deviceIdEnLicencia}|${expiry}`;
-
-    const datos =
-      new TextEncoder().encode(
-        mensaje
-      );
-
-    // ------------------------------------------------------
-    // Obtener clave pública
-    // ------------------------------------------------------
-
-    const publicKey =
-      await importarClavePublica();
-
-    // ------------------------------------------------------
-    // Verificar firma Ed25519
-    // ------------------------------------------------------
-
-    const firmaCorrecta =
-      await crypto.subtle.verify(
-        {
-          name: 'Ed25519'
-        },
-        publicKey,
-        firma,
-        datos
-      );
-
-    if (!firmaCorrecta) {
-
-      return {
-        valida: false,
-        motivo:
-          'firma de licencia inválida'
-      };
-    }
-
-    // ------------------------------------------------------
-    // LICENCIA PERMANENTE
-    // ------------------------------------------------------
-
-    if (expiry === 'PERM') {
-
-      return {
-        valida: true,
-        expiry: 'PERM'
-      };
-    }
-
-    // ------------------------------------------------------
-    // VALIDAR FECHA
-    // ------------------------------------------------------
+    /* =====================================================
+       VALIDAR CÓDIGO DE 24 CARACTERES
+    ===================================================== */
 
     if (
-      !/^\d{4}-\d{2}-\d{2}$/.test(
-        expiry
-      )
+      !codigo24Valido(codigo24)
     ) {
 
       return {
         valida: false,
-        motivo:
-          'fecha de vencimiento inválida'
+        motivo: 'código de licencia inválido'
       };
+
     }
+
+
+    /* =====================================================
+       COMPROBAR VENCIMIENTO
+    ===================================================== */
 
     const hoy =
       fechaLocalISO();
 
-    // ------------------------------------------------------
-    // La fecha de vencimiento ES INCLUSIVA.
-    //
-    // Si expiry = 2027-02-03:
-    //
-    // 2027-02-02 → funciona
-    // 2027-02-03 → funciona
-    // 2027-02-04 → vencida
-    // ------------------------------------------------------
 
     if (hoy > expiry) {
 
       return {
+
         valida: false,
+
         motivo: 'licencia vencida',
-        expiry
+
+        expiry: expiry,
+
+        codigo24: codigo24
+
       };
+
     }
 
+
+    /* =====================================================
+       LICENCIA VÁLIDA
+    ===================================================== */
+
     return {
+
       valida: true,
-      expiry
+
+      expiry: expiry,
+
+      codigo24: codigo24
+
     };
+
 
   } catch (error) {
 
@@ -335,17 +374,21 @@ async function validarLicencia(
     );
 
     return {
+
       valida: false,
-      motivo:
-        'no se pudo validar la licencia'
+
+      motivo: 'no se pudo validar la licencia'
+
     };
+
   }
+
 }
 
 
-// ==========================================================
-// FUNCIÓN EXISTENTE DE MINCONTROL
-// ==========================================================
+/* =========================================================
+   CALCULAR DÍAS DESDE LA INSTALACIÓN
+========================================================= */
 
 function diasDesde(fechaISO) {
 
@@ -368,4 +411,5 @@ function diasDesde(fechaISO) {
     (hoy - inicio) /
     86400000
   );
+
 }

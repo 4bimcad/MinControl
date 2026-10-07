@@ -1,7 +1,8 @@
 {
   "name": "MinControl",
   "short_name": "MinControl",
-  "description": "Control de producción, costos y trabajadores para minería artesanal.",
+  "version": "1.0",
+  "description": "Aplicación para el control de producción, costos, trabajadores y operaciones de minería artesanal y pequeña minería.",
   "start_url": "/",
   "scope": "/",
   "id": "/mincontrol",

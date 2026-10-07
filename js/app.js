@@ -69,6 +69,7 @@ function minControlApp() {
 
     // Licencia / prueba
     bloqueado: false,
+    navegadorIncompatible: false,
     diasRestantesPrueba: 14,
     licenciaEstado: null,
     licenciaInput: '',
@@ -97,6 +98,7 @@ function minControlApp() {
         this.licenciaEstado = licencia;
         this.bloqueado = false;
       } else {
+        this.navegadorIncompatible = licencia.motivo === 'navegador_no_compatible';
         const dias = diasDesde(this.config.fechaInstalacion);
         this.diasRestantesPrueba = Math.max(0, 14 - dias);
         this.bloqueado = this.diasRestantesPrueba <= 0;
@@ -504,9 +506,18 @@ function minControlApp() {
       this.licenciaError = '';
       const resultado = await validarLicencia(this.licenciaInput, this.config.deviceId);
       if (!resultado.valida) {
-        this.licenciaError = 'Clave inválida' + (resultado.motivo ? ' (' + resultado.motivo + ')' : '') + '.';
+        const mensajes = {
+          'navegador_no_compatible': 'Este navegador/teléfono es demasiado antiguo para verificar la licencia. Actualice Google Chrome a la última versión e intente de nuevo (Ajustes de la Play Store → Actualizar Chrome).',
+          'no corresponde a este dispositivo': 'Esta clave fue generada para otro dispositivo, no para este.',
+          'licencia vencida': 'Esta licencia venció.',
+          'formato inválido': 'El formato de la clave no es válido — revise que la copió completa.',
+          'formato de licencia inválido': 'El formato de la clave no es válido — revise que la copió completa.'
+        };
+        this.navegadorIncompatible = resultado.motivo === 'navegador_no_compatible';
+        this.licenciaError = mensajes[resultado.motivo] || ('Clave inválida' + (resultado.motivo ? ' (' + resultado.motivo + ')' : '') + '.');
         return;
       }
+      this.navegadorIncompatible = false;
       this.config.licenciaKey = this.licenciaInput.trim();
       await saveConfig(this.config);
       this.licenciaEstado = resultado;
