@@ -35,7 +35,8 @@ const URLS_TO_CACHE = [
 
     // Images
     './img/logo.png',
-    './icons/icon-192.png'
+    './icons/icon-192.png',
+    './icons/icon-512.png'
 ];
 
 self.addEventListener('install', event => {
